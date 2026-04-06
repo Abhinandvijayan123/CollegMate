@@ -1,0 +1,32 @@
+-- CollegMate Database Schema
+CREATE DATABASE IF NOT EXISTS collegmate;
+USE collegmate;
+
+CREATE TABLE IF NOT EXISTS users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  age INT NOT NULL,
+  gender ENUM('male','female','non-binary','other') NOT NULL,
+  college VARCHAR(200) NOT NULL,
+  bio TEXT,
+  email VARCHAR(200) NOT NULL UNIQUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS likes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  from_user INT NOT NULL,
+  to_user INT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (from_user) REFERENCES users(id),
+  FOREIGN KEY (to_user) REFERENCES users(id),
+  UNIQUE KEY unique_like (from_user, to_user)
+);
+
+-- Sample data
+INSERT INTO users (name, age, gender, college, bio, email) VALUES
+('Priya Sharma', 20, 'female', 'Delhi University', 'Coffee addict ☕ | Literature nerd | Looking for someone to explore cafes with!', 'priya@example.com'),
+('Rohan Mehta', 22, 'male', 'IIT Bombay', 'CS student by day, guitarist by night 🎸 | Loves hiking and street food!', 'rohan@example.com'),
+('Ananya Singh', 21, 'female', 'Jadavpur University', 'Art & Design major 🎨 | Dreamer | Always up for spontaneous road trips', 'ananya@example.com'),
+('Arjun Patel', 23, 'male', 'Pune University', 'Foodie 🍕 | Football fan | Finance student who laughs too much', 'arjun@example.com'),
+('Zara Khan', 20, 'female', 'Hyderabad Central University', 'Psychology student 🧠 | Bookworm | Midnight stargazer ✨', 'zara@example.com');
