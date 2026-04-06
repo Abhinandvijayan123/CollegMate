@@ -1,0 +1,142 @@
+const express = require('express');
+const mysql = require('mysql2/promise');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+
+const app = express();
+app.use(cors());
+app.use(bodyParser.json());
+app.use(express.static('public'));
+
+// ─── DB CONFIG ───────────────────────────────────────────────
+const dbConfig = {
+  host: 'localhost',
+  user: 'root',
+  password: 'your_password', // ← change this
+  database: 'collegmate',
+};
+
+async function getDb() {
+  return mysql.createConnection(dbConfig);
+}
+
+// ─── ROUTES ──────────────────────────────────────────────────
+
+// Register a new user (onboarding)
+app.post('/api/register', async (req, res) => {
+  const { name, age, gender, college, bio, email } = req.body;
+  if (!name || !age || !gender || !college || !email) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+  try {
+    const db = await getDb();
+    const [result] = await db.execute(
+      'INSERT INTO users (name, age, gender, college, bio, email) VALUES (?, ?, ?, ?, ?, ?)',
+      [name, age, gender, college, bio || '', email]
+    );
+    const [rows] = await db.execute('SELECT * FROM users WHERE id = ?', [result.insertId]);
+    await db.end();
+    res.json({ success: true, user: rows[0] });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ error: 'Email already registered' });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Login by email (simple, no passwords for demo)
+app.post('/api/login', async (req, res) => {
+  const { email } = req.body;
+  try {
+    const db = await getDb();
+    const [rows] = await db.execute('SELECT * FROM users WHERE email = ?', [email]);
+    await db.end();
+    if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    res.json({ success: true, user: rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get all profiles (excluding current user + already liked)
+app.get('/api/profiles/:userId', async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const db = await getDb();
+    const [rows] = await db.execute(
+      `SELECT * FROM users
+       WHERE id != ?
+       AND id NOT IN (SELECT to_user FROM likes WHERE from_user = ?)
+       ORDER BY RAND()
+       LIMIT 20`,
+      [userId, userId]
+    );
+    await db.end();
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Like a profile
+app.post('/api/like', async (req, res) => {
+  const { fromUser, toUser } = req.body;
+  try {
+    const db = await getDb();
+    await db.execute(
+      'INSERT IGNORE INTO likes (from_user, to_user) VALUES (?, ?)',
+      [fromUser, toUser]
+    );
+    // Check mutual like (match!)
+    const [mutual] = await db.execute(
+      'SELECT * FROM likes WHERE from_user = ? AND to_user = ?',
+      [toUser, fromUser]
+    );
+    const isMatch = mutual.length > 0;
+    let matchedUser = null;
+    if (isMatch) {
+      const [userRows] = await db.execute('SELECT * FROM users WHERE id = ?', [toUser]);
+      matchedUser = userRows[0];
+    }
+    await db.end();
+    res.json({ success: true, isMatch, matchedUser });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get matches for a user
+app.get('/api/matches/:userId', async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const db = await getDb();
+    const [rows] = await db.execute(
+      `SELECT u.* FROM users u
+       INNER JOIN likes l1 ON l1.to_user = u.id AND l1.from_user = ?
+       INNER JOIN likes l2 ON l2.from_user = u.id AND l2.to_user = ?`,
+      [userId, userId]
+    );
+    await db.end();
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get user profile
+app.get('/api/user/:userId', async (req, res) => {
+  try {
+    const db = await getDb();
+    const [rows] = await db.execute('SELECT * FROM users WHERE id = ?', [req.params.userId]);
+    await db.end();
+    if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── START ───────────────────────────────────────────────────
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`CollegMate server running on http://localhost:${PORT}`));
